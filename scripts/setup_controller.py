@@ -5,14 +5,17 @@ import os
 
 cam = cv2.VideoCapture(0)
 
-NUM_LEDS = 5
+NUM_LEDS = 50
 coords = []
 
 # Create a folder if it doesn't exist
-save_dir = "led_images"
+capture_dir = "led_images"
+save_dir = "coordinates"
+os.makedirs(capture_dir, exist_ok=True)
 os.makedirs(save_dir, exist_ok=True)
 
-
+PYTHON_PATH = "/home/martin/led-env/bin/python3"
+LED_SCRIPT = "/home/martin/led_project/set_led.py"
 
 if not cam.isOpened():
     print("Cannot open camera")
@@ -24,7 +27,7 @@ for i in range(20):
 
 for i in range(NUM_LEDS):
 
-    subprocess.run(["ssh", "martin@ledpi.local", f"python3 set_led.py {i}"])
+    subprocess.run(["ssh", "martin@ledpi.local", f"sudo {PYTHON_PATH} {LED_SCRIPT} {i}"])
 
     ret, frame = cam.read()
 
@@ -41,7 +44,12 @@ for i in range(NUM_LEDS):
 
     if ret:
         cv2.imshow('Camera Feed', circle)
-        cv2.imwrite(os.path.join(save_dir, f'led_{i}.png'), circle)
+        cv2.imwrite(os.path.join(capture_dir, f'led_{i}.png'), circle)
     cv2.waitKey(1)
 
 cam.release()
+cv2.destroyAllWindows()
+
+save_file = open((os.path.join(save_dir, "savedata.json")), "w")
+json.dump(coords, save_file, indent=6)
+save_file.close()
