@@ -36,4 +36,7 @@ then username@ledpi.local
 # cd
 # nano program.py
 # sudo venvName/bin/python3 script.py
+# sudo ~/led-env/bin/python3 set_led.py 1
+
+
 
