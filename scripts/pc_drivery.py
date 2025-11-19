@@ -1,4 +1,4 @@
-import sounddevice as sd
+import soundcard as sc
 import aubio
 import socket
 import json
@@ -18,26 +18,6 @@ NUM_LEDS = 50
 sparklesProbability = 0.4  # probability of sudden flash
 
 # =============================
-# DEVICE SELECTION
-# =============================
-def select_input_device():
-    print("Available input devices:")
-    devices = sd.query_devices()
-    for i, d in enumerate(devices):
-        if d['max_input_channels'] > 0:
-            print(f"{i}: {d['name']} (inputs={d['max_input_channels']})")
-    idx = input("Enter device index to use for input: ")
-    try:
-        idx = int(idx)
-        if devices[idx]['max_input_channels'] < 1:
-            raise ValueError("Device does not support input.")
-        return idx
-    except Exception as e:
-        print(f"Invalid selection: {e}")
-        exit(1)
-
-SYSTEM_AUDIO_INDEX = select_input_device()
-
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
 samplerate = 44100
@@ -118,7 +98,7 @@ def flash(frame):
 
 prev_frame = [[0, 0, 0] for _ in range(NUM_LEDS)]
 
-def audio_callback(indata, frames, time_info, status):
+def audio_callback(indata):
 
     global prev_frame, current_mode, mode_start_time
 
@@ -181,14 +161,11 @@ def audio_callback(indata, frames, time_info, status):
 # --- Main Loop ---
 print("Starting music-reactive lights. Press Ctrl+C to stop.")
 try:
-    # get audio stream from system audio index
-    with sd.InputStream(device=SYSTEM_AUDIO_INDEX,
-                        channels=1, # 1 channel (stereo to mono as spatial sound isn't necessary)
-                        samplerate=samplerate,
-                        blocksize=hop_s,
-                        callback=audio_callback): # audio_callack is called when a new block of audio is available
+    # Get default loopback device (what you hear)
+    with sc.default_speaker().recorder(samplerate=samplerate, blocksize=hop_s) as mic:
         while True:
-            time.sleep(1)
+            data = mic.record(numframes=hop_s)
+            audio_callback(data)
 except KeyboardInterrupt:
     print("Stopped by user")
 except Exception as e:

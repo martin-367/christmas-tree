@@ -40,3 +40,9 @@ then username@ledpi.local
 
 
 
+LED WS2811 150leds
+
+
+
+Connect RPi to GND of power supply
+LLC with RPi with signal protection
