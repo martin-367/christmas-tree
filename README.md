@@ -1,3 +1,14 @@
+# wiring
+
+datalines: GPIO 18, 21, 10
+
+
+
+
+
+
+
+
 # christmas-tree
 Raspberry-pi code for LED christmas tree
 

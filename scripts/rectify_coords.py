@@ -19,29 +19,36 @@ coords = sample_load_file
 # what percentage of the lights do we think are likely correct?
 correct_percent = 0.5
 
+# average distance in a ball
+circ_avg = 0.75
 
-# find gaps between adjacent LEDs
+# pythagoras distance in any dimension
+def dist(a,b):
+    #assumes a and b are lists of the same length
+    total = 0
+    for i,j in zip(a,b):
+        total += (i-j)**2
+    return total**0.5
+
+# find gap distances between all adjacent LEDs
 gaps = []
+scan = 0
+for i in range(num_leds):
+    gaps.append(dist(coords[scan],coords[scan+1]))
 
-for i in range(NUM_LEDS - 1):
-    deltaX = coords[i+1][0] - coords[i][0]
-    deltaY = coords[i+1][1] - coords[i][1]
-    distance = maths.sqrt(deltaX**2 + deltaY**2)
-    distance = maths.sqrt(deltaX**2 + deltaY**2)
-    distance = maths.sqrt(deltaX**2 + deltaY**2)
-    distance = maths.sqrt(deltaX**2 + deltaY**2)
-    gaps.append(distance)
-    average_gap = sum(gaps) / len(gaps)
-    gaps_sorted = sorted(gaps)
+gaps_sorted = [i for i in gaps]
+gaps_sorted.sort()
+
+#  find the average of the bottom percent we think are correct
+scan = 0
 average_dist = 0
-loop_bound = int(len(gaps_sorted) * correct_percent)
-for i in range(loop_bound):
-    average_dist += gaps_sorted[i]
-
-average_dist /= loop_bound
-
+while scan < len(gaps_sorted)*correct_percent:
+    average_dist += gaps_sorted[scan]
+    scan += 1
+average_dist /= scan
+print(average_dist)
 # scale average to match radius sphere
-max_dist = average_dist/0.75
+max_dist = average_dist/circ_avg
 
 # find all the gaps below the max_distance
 # 1 means needs fixing; 0 means no need to fix
@@ -51,36 +58,25 @@ for i in gaps:
         track.append(0)
     else:
         track.append(1)
+
 # NOW REMOVE SINGLE OK GAPS
-
-for i in range(1, NUM_LEDS - 2):
-    if track[i-1] + track[i+1] == 2: # both sides are bad, although middle falsely appears good as is close enough to neighbours
-        track[i] = 1
-
+scan = 1
+while scan < len(track)-1:
+    if track[scan-1] + track[scan+1] == 2:
+        track[scan] = 1
+    scan += 1
 
 # which LEDs are fine?
 correct_LEDS = []
-
+# start and end don't have a pair
 correct_LEDS.append(track[0])
-for i in range(NUM_LEDS - 2):
-    correct_LEDS.append(track[i] * track[i + 1]) # both sides are bad, so this one is bad
+scan = 0
+while scan < len(track)-1:
+    correct_LEDS.append(track[scan]*track[scan+1])
+    scan += 1
 correct_LEDS.append(track[-1])
 
-
 # NOW WE FIX
-
-x_coords = [c[0] for c in coords]
-y_coords = [c[1] for c in coords]
-
-
-plt.figure(figsize=(8, 8))
-# Assign color per LED: green for 1, red for 0
-colors = ['green' if val == 1 else 'red' for val in correct_LEDS]
-plt.scatter(x_coords, y_coords, c=colors, marker='o')
-plt.gca().invert_yaxis()  # Invert Y to match image coordinates
-plt.axis('off')  # Remove axis
-plt.show()
-
 
 next_good = 0
 # check if the starting LEDS are wrong:
@@ -95,7 +91,6 @@ if correct_LEDS[0] == 1:
 # use finished as an escape variable
 finished = False
 while not finished:
-        # move next good to end of current good run
     try:
         # move next good to end of current good run
         while correct_LEDS[next_good] == 0:
@@ -105,9 +100,11 @@ while not finished:
         # move up to next working ont
         while correct_LEDS[next_good] == 1:
             next_good += 1
-    except IndexError:
+    except:
         # this fails safe when we reach the end of the wire
         finished = True
+
+    if finished:
         # check if we have a loose end of wrong LEDs make them all the same as the previous correct one
         if correct_LEDS[-1] == 1:
             # find the last one which was correct
@@ -126,35 +123,7 @@ while not finished:
         scan = previous_good
         step = 1
         while scan + step != next_good:
-            coords[scan+step] = [i+j for i,j in zip(coords[previous_good],[k*step/(next_good-previous_good) for k in differs])]
+            coords[scan+step] = [int(i+j) for i,j in zip(coords[previous_good],[k*step/(next_good-previous_good) for k in differs])]
             step += 1
 
 # Now need to convert to GIFT
-
-x_coords = [c[0] for c in coords]
-y_coords = [c[1] for c in coords]
-colors = ['green' if val == 1 else 'red' for val in correct_LEDS]
-plt.figure(figsize=(8, 8))
-plt.scatter(x_coords, y_coords, c=colors, marker='o')
-plt.gca().invert_yaxis()
-plt.axis('off')
-plt.show()
-
-
-
-# sample_load_file[i][j]
-
-
-#count = 0
-#while(count < NUM_LEDS):
- #   if count != max:
-  #      sample_load_file[count][1] = sample_load_file[count][1] - minValue
-   #     sample_load_file[count][1] = sample_load_file[count][1] * 100 / sample_load_file[max][1]
-    #count += 1
-#count = 0
-#print(sample_load_file)
-
-#print(sample_load_file.index(max(sample_load_file)))
-
-
-
