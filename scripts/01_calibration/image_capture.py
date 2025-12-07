@@ -28,7 +28,7 @@ angle = input("scan angle: ")
 
 for i in range(total_leds):
     # turn on LED i via remote script
-    #subprocess.run(["ssh", "martin@ledpi.local", f"sudo {PYTHON_PATH} {LED_SCRIPT} {i}"])
+    subprocess.run(["ssh", "martin@ledpi.local", f"sudo {PYTHON_PATH} {LED_SCRIPT} {i}"])
     ret, frame = cam.read()
 
     if not ret:
@@ -36,7 +36,7 @@ for i in range(total_leds):
         break
 
     cv2.imwrite(os.path.join(CAPTURE_DIR, f'led_{i}_angle_{angle}.png'), frame)
-    #subprocess.run(["ssh", "martin@ledpi.local", f"sudo {PYTHON_PATH} {CLEAR_SCRIPT}"])
+    subprocess.run(["ssh", "martin@ledpi.local", f"sudo {PYTHON_PATH} {CLEAR_SCRIPT}"])
 
     time.sleep(0.1)
 

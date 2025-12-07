@@ -11,19 +11,22 @@ import math
 UDP_IP = "0.0.0.0"  # listen on all interfaces
 UDP_PORT = 5005
 
-LED_PIN = 18
+# LED strip configuration
+LED_PIN_1 = 18        # PWM0
+LED_PIN_2 = 21        # PCM_DOUT
+LED_PIN_3 = 13        # SPI_MOSI
 LED_FREQ_HZ = 800000
 LED_DMA = 10
 LED_BRIGHTNESS = 255
 LED_INVERT = False
-LED_CHANNEL = 0
 
 # Initialize with some default length; will adjust per frame
-NUM_LEDS_INITIAL = 600
 NUM_LEDS_PER_STRIP = 200
-strip1 = PixelStrip(NUM_LEDS_INITIAL, LED_PIN, LED_FREQ_HZ, LED_DMA, LED_INVERT, LED_BRIGHTNESS, LED_CHANNEL)
-strip2 = PixelStrip(NUM_LEDS_INITIAL, LED_PIN, LED_FREQ_HZ, LED_DMA, LED_INVERT, LED_BRIGHTNESS, LED_CHANNEL)
-strip3 = PixelStrip(NUM_LEDS_INITIAL, LED_PIN, LED_FREQ_HZ, LED_DMA, LED_INVERT, LED_BRIGHTNESS, LED_CHANNEL)
+
+# Use different channels for PWM-based strips if they share a PWM peripheral
+strip1 = PixelStrip(NUM_LEDS_PER_STRIP, LED_PIN_1, LED_FREQ_HZ, LED_DMA, LED_INVERT, LED_BRIGHTNESS, channel=0)
+strip2 = PixelStrip(NUM_LEDS_PER_STRIP, LED_PIN_2, LED_FREQ_HZ, LED_DMA, LED_INVERT, LED_BRIGHTNESS)
+strip3 = PixelStrip(NUM_LEDS_PER_STRIP, LED_PIN_3, LED_FREQ_HZ, LED_DMA, LED_INVERT, LED_BRIGHTNESS, channel=1)
 strip1.begin()
 strip2.begin()
 strip3.begin()
@@ -34,59 +37,47 @@ sock.setblocking(False)
 
 print("Listening for LED frames on UDP port", UDP_PORT)
 
-def show_all():
-    t1 = threading.Thread(target=strip1.show)
-    t2 = threading.Thread(target=strip2.show)
-    t3 = threading.Thread(target=strip3.show)
-
-    t1.start()
-    t2.start()
-    t3.start()
-
-    t1.join()
-    t2.join()
-    t3.join()
 
 try:
     while True:
         try:
             data, addr = sock.recvfrom(65536)
-            message = json.loads(data.decode())
-            frame = message.get("frame", [])
-
-            # Adjust strip length if frame size differs
-            if len(frame) != strip.numPixels():
-                strip = PixelStrip(len(frame), LED_PIN, LED_FREQ_HZ, LED_DMA, LED_INVERT, LED_BRIGHTNESS, LED_CHANNEL)
-                strip.begin()
-
-            # Update LEDs
-            for i, color in enumerate(frame):
-                r, g, b = color
+            
+            # The data is a flat byte array: [r,g,b,r,g,b,...]
+            # We process it in chunks of 3 bytes.
+            num_pixels = len(data) // 3
+            for i in range(num_pixels):
+                r = data[i*3]
+                g = data[i*3 + 1]
+                b = data[i*3 + 2]
                 
-                LED_indx = i % NUM_LEDS_PER_STRIP
+                # Determine which strip and which LED on that strip to light up
+                strip_index = i // NUM_LEDS_PER_STRIP
+                led_index = i % NUM_LEDS_PER_STRIP
+                
+                if strip_index == 0:
+                    strip1.setPixelColor(led_index, Color(r, g, b))
+                elif strip_index == 1:
+                    strip2.setPixelColor(led_index, Color(r, g, b))
+                elif strip_index == 2:
+                    strip3.setPixelColor(led_index, Color(r, g, b))
 
-                strip_number_str = str(math.floor(float(i / NUM_LEDS_PER_STRIP)))
-
-                match strip_number_str:
-                    case "0":
-                        strip1.setPixelColor(LED_indx, Color(r, g, b))
-                    case "1":
-                        strip2.setPixelColor(LED_indx, Color(r, g, b))
-                    case "2":
-                        strip3.setPixelColor(LED_indx, Color(r, g, b))
-
-            show_all()
+            # Show strips sequentially; the library is not thread-safe
+            strip1.show()
+            strip2.show()
+            strip3.show()
+            print("Frame displayed")
 
         except BlockingIOError:
             # No data received
             time.sleep(0.01)
-        except json.JSONDecodeError as e:
-            print("JSON decode error:", e)
 
 except KeyboardInterrupt:
     print("Exiting, turning off LEDs")
     for i in range(NUM_LEDS_PER_STRIP):
-        strip1[i] = (0, 0, 0)
-        strip2[i] = (0, 0, 0)
-        strip3[i] = (0, 0, 0)
-    show_all()
+        strip1.setPixelColor(i, Color(0, 0, 0))
+        strip2.setPixelColor(i, Color(0, 0, 0))
+        strip3.setPixelColor(i, Color(0, 0, 0))
+    strip1.show()
+    strip2.show()
+    strip3.show()
