@@ -2,10 +2,10 @@ import sys
 import board, neopixel
 import threading
 
-NUM_LEDS_PER_STRING = 200
-strip1 = neopixel.NeoPixel(board.D18, NUM_LEDS_PER_STRING, brightness = 1.0, auto_write=False)
-strip2 = neopixel.NeoPixel(board.D21, NUM_LEDS_PER_STRING, brightness = 1.0, auto_write=False)
-strip3 = neopixel.NeoPixel(board.D18, NUM_LEDS_PER_STRING, brightness = 1.0, auto_write=False)
+NUM_LEDS_PER_STRIP = 200
+strip1 = neopixel.NeoPixel(board.D18, NUM_LEDS_PER_STRIP, brightness = 1.0, auto_write=False)
+strip2 = neopixel.NeoPixel(board.D21, NUM_LEDS_PER_STRIP, brightness = 1.0, auto_write=False)
+strip3 = neopixel.NeoPixel(board.D18, NUM_LEDS_PER_STRIP, brightness = 1.0, auto_write=False)
 
 def show_all():
     t1 = threading.Thread(target=strip1.show)
@@ -20,7 +20,7 @@ def show_all():
     t2.join()
     t3.join()
 
-for i in range(NUM_LEDS_PER_STRING):
+for i in range(NUM_LEDS_PER_STRIP):
     strip1[i] = (0, 0, 0) # set LED i to red
     strip2[i] = (0, 0, 0) # set LED i to red
     strip3[i] = (0, 0, 0) # set LED i to red

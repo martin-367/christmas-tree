@@ -4,19 +4,21 @@ import os
 
 cam = cv2.VideoCapture(0)
 
+# angles = [0, 45, 90, 135, 180, 225, 270, 315]
+
 if not cam.isOpened():
     print("Cannot open camera")
     exit()
 
-total_leds = 500
+total_leds = 200
 
 # file locations on RPi
 PYTHON_PATH = "/home/martin/led-env/bin/python3"
 LED_SCRIPT = "/home/martin/led_project/set_led.py"
 CLEAR_SCRIPT = "/home/martin/led_project/clear.py"
+CAPTURE_DIR = "led_images"
 
-capture_dir = "led_images"
-os.makedirs(capture_dir, exist_ok=True)
+os.makedirs(CAPTURE_DIR, exist_ok=True)
 
 # warm up camera
 for i in range(20):
@@ -33,7 +35,7 @@ for i in range(total_leds):
         print(f"Camera read failed for LED {i}")
         break
 
-    cv2.imwrite(os.path.join(capture_dir, f'led_{i}_angle_{angle}.png'), frame)
+    cv2.imwrite(os.path.join(CAPTURE_DIR, f'led_{i}_angle_{angle}.png'), frame)
     #subprocess.run(["ssh", "martin@ledpi.local", f"sudo {PYTHON_PATH} {CLEAR_SCRIPT}"])
 
     time.sleep(0.1)
