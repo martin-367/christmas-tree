@@ -1,7 +1,7 @@
 from machine import UART, Pin, ADC
 import time
 
-uart = UART(0, baudrate=115200, tx=Pin(0), rx=Pin(1))
+uart = UART(0, baudrate=9600, tx=Pin(0), rx=Pin(1))
 
 # Initialize ADC on GP26 (ADC0)
 potentiometer = ADC(26)
@@ -13,6 +13,7 @@ print("ADC Telemetry System Ready")
 
 last_send_time = 0
 conversion_factor = 3.3 / 65535
+voltage = 0
 
 
 while True:
@@ -27,8 +28,9 @@ while True:
         raw_value = potentiometer.read_u16()
         voltage = raw_value * conversion_factor
 
-        # Format: "key:value\n"
-        message = "pot:{}\n".format(voltage)
+        # Format: "D:<voltage>\n" — send with prefix to filter noise
+        message = "D:{:.3f}\n".format(voltage)
+        print(f"Sending pot voltage: {voltage:.3f} V")
         uart.write(message)
         
         last_send_time = current_time
@@ -40,5 +42,3 @@ while True:
         
         while button.value() == 0:
             time.sleep(0.01)
-
-    time.sleep(0.01)

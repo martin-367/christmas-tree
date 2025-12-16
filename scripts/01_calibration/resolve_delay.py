@@ -57,9 +57,8 @@ def audio_callback(indata, frames, time_info, status):
     energy = np.sqrt(np.mean(mono**2)) # RMS energy
 
     if energy > 0.01:
+        print("Lights ON")
         led_buffer[:] = 255
-    else:
-        led_buffer[:] = 0
 
     # Limit update rate to ~30 FPS to prevent network/LED flooding
     if now - last_send_time > 0.033:
@@ -71,6 +70,7 @@ def audio_callback(indata, frames, time_info, status):
         except Exception as e:
             print("UDP send error:", e)
         last_send_time = now
+        led_buffer[:] = 0
 
 # --- Main Loop ---
 print("Starting music-reactive lights. Press Ctrl+C to stop.")

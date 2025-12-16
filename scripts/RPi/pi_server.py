@@ -78,7 +78,7 @@ try:
         strip1.show()
         strip2.show()
         strip3.show()
-        print("Frame displayed")
+       # print("Frame displayed")
 
 except KeyboardInterrupt:
     print("Exiting, turning off LEDs")

@@ -45,31 +45,56 @@ frame_buffer = deque()
 
 
 # /dev/serial0 is the default alias for the primary UART pins
-ser = serial.Serial('/dev/serial0', 115200, timeout=1)
+ser = serial.Serial('/dev/serial0', 9600, timeout=0)
 ser.reset_input_buffer()
+serial_buffer = ""
 
 print("Connecting to Pico...")
 
 
 try:
     while True:
-        try:
-            data, addr = sock.recvfrom(65536)
-            frame_buffer.append((time.time() + DISPLAY_DELAY, data))
-        except BlockingIOError:
-            pass
-
-        if ser.in_waiting > 0:
-            line = ser.readline().decode('utf-8').rstrip()
+        # Drain UDP buffer
+        while True:
             try:
-                DISPLAY_DELAY = float(line)
-                print(f"Delay updated to: {DISPLAY_DELAY}")
-            except ValueError:
-                print(f"Pico said: {line}")
+                data, addr = sock.recvfrom(65536)
+                frame_buffer.append((time.time(), data))
+            except BlockingIOError:
+                break
 
-        if not frame_buffer or time.time() < frame_buffer[0][0]:
+        # Drain Serial buffer
+        if ser.in_waiting > 0:
+            try:
+                data = ser.read(ser.in_waiting).decode('utf-8', errors='ignore')
+                serial_buffer += data
+                if '\n' in serial_buffer:
+                    lines = serial_buffer.split('\n')
+                    # Process all complete lines
+                    for line in lines[:-1]:
+                        line = line.strip()
+                        # Only process lines starting with our protocol prefix "D:"
+                        if line.startswith("D:"):
+                            try:
+                                # Remove "D:" and parse the number
+                                new_delay = float(line[2:])
+                                if abs(new_delay - DISPLAY_DELAY) > 0.01:
+                                    DISPLAY_DELAY = new_delay
+                                    print(f"Delay updated to: {DISPLAY_DELAY:.3f}")
+                            except ValueError:
+                                pass
+                    # Keep the last chunk (incomplete line)
+                    serial_buffer = lines[-1]
+                    if len(serial_buffer) > 256: serial_buffer = ""
+            except Exception as e:
+                print(f"Serial error: {e}")
+
+        if not frame_buffer or time.time() < frame_buffer[0][0] + DISPLAY_DELAY:
             time.sleep(0.001)
             continue
+
+        # Skip frames if we are falling behind
+        while len(frame_buffer) > 1 and time.time() > frame_buffer[1][0] + DISPLAY_DELAY:
+            frame_buffer.popleft()
 
         _, data = frame_buffer.popleft()
 
