@@ -10,7 +10,7 @@ if not cam.isOpened():
     print("Cannot open camera")
     exit()
 
-total_leds = 200
+total_leds = 400
 
 # file locations on RPi
 PYTHON_PATH = "/home/martin/led-env/bin/python3"
@@ -35,8 +35,10 @@ for i in range(total_leds):
         print(f"Camera read failed for LED {i}")
         break
 
+    time.sleep(1)
+
     cv2.imwrite(os.path.join(CAPTURE_DIR, f'led_{i}_angle_{angle}.png'), frame)
-    subprocess.run(["ssh", "martin@ledpi.local", f"sudo {PYTHON_PATH} {CLEAR_SCRIPT}"])
+    #subprocess.run(["ssh", "martin@ledpi.local", f"sudo {PYTHON_PATH} {CLEAR_SCRIPT}"])
 
     time.sleep(0.1)
 

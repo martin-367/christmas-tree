@@ -48,7 +48,9 @@ then username@ledpi.local
 # nano program.py
 # sudo venvName/bin/python3 script.py
 # sudo ~/led-env/bin/python3 set_led.py 1
+start led env, then cd to led_project, however does  not need to be open
 
+sound settings -> more sound settings -> recording -> properties on cable output -> listen -> listen to this device
 
 
 LED WS2811 150leds

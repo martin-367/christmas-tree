@@ -6,6 +6,7 @@ import random
 import numpy as np
 import time
 import math
+from collections import deque
 
 # =============================
 # CONFIGURATION
@@ -49,9 +50,6 @@ energy_history = []
 # track previous short-term energy to detect sudden rises
 prev_energy = 0.0
 
-# --- State for flash hold ---
-last_flash_time = 0.0
-
 def strong_beat_detected(mono, energy, average_energy):
     """
     Strong beat if energy is considerably above recent average OR
@@ -79,6 +77,20 @@ def averageEnergy(mono_chunk, RMS_energy):
 
     average = np.mean(energy_history)
     return average
+
+def apply_fade_trail(prev_frame, new_frame, fade_factor=0.5):
+    """
+    Combines previous frame with new frame to create a fading trail.
+    fade_factor: amount of previous frame to keep (0 → none, 1 → fully persistent)
+    Lower fade_factor => faster decay (more responsive).
+    """
+    frame = []
+    for old, new in zip(prev_frame, new_frame):
+        r = int(fade_factor * old[0] + (1 - fade_factor) * new[0])
+        g = int(fade_factor * old[1] + (1 - fade_factor) * new[1])
+        b = int(fade_factor * old[2] + (1 - fade_factor) * new[2])
+        frame.append([r, g, b])
+    return frame
 
 def flash(frame, intensity=1.0):
     """
@@ -108,9 +120,81 @@ def flash(frame, intensity=1.0):
 
     return new_frame
 
+prev_frame = [[0, 0, 0] for _ in range(NUM_LEDS)]
+
+# --- Tempo / metronome state ---
+onset_times = deque(maxlen=32)
+last_onset_time = 0.0
+MIN_ONSET_INTERVAL = 0.18   # seconds - ignore onsets closer than this (debounce)
+MIN_BPM = 40
+MAX_BPM = 200
+bpm = 0.0
+BPM_SMOOTH = 0.85           # smoothing factor for BPM updates (higher => slower changes)
+next_tick = 0.0
+ALIGN_TOLERANCE = 0.12      # seconds - how close an onset must be to align phase
+CLEAR_AFTER = 0.08          # seconds to wait before sending a clear (black) frame after a tick
+last_flash_time = 0.0
+last_sent_black = False
+
+def estimate_bpm_from_onsets():
+    global bpm, next_tick
+    if len(onset_times) < 4:
+        return
+    diffs = np.diff(np.array(onset_times))
+    # reject very long or very short intervals
+    diffs = diffs[(diffs > 0.2) & (diffs < 2.0)]
+    if len(diffs) < 3:
+        return
+    median_interval = np.median(diffs)
+    if median_interval <= 0:
+        return
+    candidate_bpm = 60.0 / median_interval
+    if candidate_bpm < MIN_BPM or candidate_bpm > MAX_BPM:
+        return
+    if bpm == 0.0:
+        bpm = candidate_bpm
+        next_tick = onset_times[-1] + (60.0 / bpm)
+    else:
+        bpm = BPM_SMOOTH * bpm + (1.0 - BPM_SMOOTH) * candidate_bpm
+
+def schedule_and_emit_metronome(now, energy):
+    """
+    Check whether it's time to emit a metronome tick (flash).
+    Returns (should_send, frame) where should_send is True when a packet should be sent.
+    """
+    global next_tick, last_flash_time, last_sent_black
+
+    if bpm == 0.0:
+        return False, None
+
+    interval = 60.0 / bpm
+    sent = False
+    frame = None
+
+    # If we haven't initialized next_tick (e.g. BPM learned but next_tick not set), set it
+    if next_tick == 0.0:
+        next_tick = now + interval
+
+    # If an onset is close to the next tick, align phase
+    # (Don't create a flash here — we'll flash at the aligned tick below)
+    if abs(now - next_tick) < ALIGN_TOLERANCE:
+        next_tick = now + interval
+
+    # Emit ticks for any overdue intervals (catch up)
+    while now >= next_tick:
+        # Create the flash for this tick; intensity can be derived from recent energy
+        intensity = max(0.6, min(2.5, (energy * 5.0)))  # scale energy to intensity
+        frame = flash([[0,0,0]] * NUM_LEDS, intensity=intensity)
+        last_flash_time = now
+        last_sent_black = False
+        sent = True
+        next_tick += interval
+
+    return sent, frame
+
 def audio_callback(indata, frames, time_info, status):
 
-    global last_flash_time
+    global prev_frame, last_onset_time, last_flash_time, last_sent_black
 
     if status:
         print("Audio status:", status)
@@ -121,32 +205,45 @@ def audio_callback(indata, frames, time_info, status):
     energy = np.sqrt(np.mean(mono**2)) # RMS energy
     avgEnergy = averageEnergy(mono, energy)
 
-    send_data = False
-    final_frame = None
-
-    # compute intensity proportional to how strong the beat is
-    intensity = max(0.3, min(3.0, (energy / (avgEnergy + 1e-9))))
+    # Update onset list if a strong onset detected (used for BPM estimation)
     if strong_beat_detected(mono, energy, avgEnergy):
-        # stronger beats -> higher intensity and tighter flash
-        intensity_scaled = intensity * 1.2
-        final_frame = flash([[0,0,0]] * NUM_LEDS, intensity=intensity_scaled)
-        send_data = True
-        last_flash_time = now
-        # Debug print for beat strength (can be commented out)
-        print(f"Flash! energy={energy:.4f} avg={avgEnergy:.4f} ratio={energy/ (avgEnergy+1e-9):.2f}")
-    elif (now - last_flash_time > 0.08) and (last_flash_time != 0):
-        # If 80ms have passed since the last flash, send a black frame to clear.
-        final_frame = [[0, 0, 0] for _ in range(NUM_LEDS)]
-        send_data = True
-        last_flash_time = 0 # Reset so we only send the black frame once.
+        if (now - last_onset_time) > MIN_ONSET_INTERVAL:
+            onset_times.append(now)
+            last_onset_time = now
+            estimate_bpm_from_onsets()
+            # Align phase if this onset is very close to the expected tick
+            if bpm != 0.0 and abs(now - next_tick) < ALIGN_TOLERANCE:
+                # snap next tick to now and advance
+                next_tick = now + (60.0 / bpm)
 
-    if send_data:
-        packet = bytearray([int(c) for color in final_frame for c in color])
+    # Only flash on metronome ticks (not on every onset)
+    should_send, frame = schedule_and_emit_metronome(now, energy)
+
+    # If a tick was emitted, send it and ensure a black frame gets sent shortly after
+    if should_send and frame is not None:
+        packet = bytearray([int(c) for color in frame for c in color])
         try:
             sock.sendto(packet, (UDP_IP, UDP_PORT))
         except Exception as e:
             print("UDP send error:", e)
+        last_sent_black = False
+        return
 
+    # If enough time has passed since last flash, send a single black frame and then stop
+    if (last_flash_time != 0.0) and (now - last_flash_time > CLEAR_AFTER) and (not last_sent_black):
+        black_frame = [[0, 0, 0] for _ in range(NUM_LEDS)]
+        packet = bytearray([int(c) for color in black_frame for c in color])
+        try:
+            sock.sendto(packet, (UDP_IP, UDP_PORT))
+        except Exception as e:
+            print("UDP send error:", e)
+        last_sent_black = True
+        # reset last_flash_time so we don't repeatedly clear
+        last_flash_time = 0.0
+        return
+
+    # Otherwise do nothing (no packet) — metronome-only behavior
+    return
 # --- Main Loop ---
 print("Starting music-reactive lights. Press Ctrl+C to stop.")
 try:

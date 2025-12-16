@@ -5,6 +5,8 @@ from rpi_ws281x import PixelStrip, Color
 import threading
 import math
 from collections import deque
+import serial
+
 
 # =============================
 # CONFIGURATION
@@ -41,6 +43,14 @@ print("Listening for LED frames on UDP port", UDP_PORT)
 
 frame_buffer = deque()
 
+
+# /dev/serial0 is the default alias for the primary UART pins
+ser = serial.Serial('/dev/serial0', 115200, timeout=1)
+ser.reset_input_buffer()
+
+print("Connecting to Pico...")
+
+
 try:
     while True:
         try:
@@ -48,6 +58,14 @@ try:
             frame_buffer.append((time.time() + DISPLAY_DELAY, data))
         except BlockingIOError:
             pass
+
+        if ser.in_waiting > 0:
+            line = ser.readline().decode('utf-8').rstrip()
+            try:
+                DISPLAY_DELAY = float(line)
+                print(f"Delay updated to: {DISPLAY_DELAY}")
+            except ValueError:
+                print(f"Pico said: {line}")
 
         if not frame_buffer or time.time() < frame_buffer[0][0]:
             time.sleep(0.001)
@@ -81,6 +99,7 @@ try:
         print("Frame displayed")
 
 except KeyboardInterrupt:
+    ser.close()
     print("Exiting, turning off LEDs")
     for i in range(NUM_LEDS_PER_STRIP):
         strip1.setPixelColor(i, Color(0, 0, 0))
