@@ -10,7 +10,7 @@ import time
 UDP_IP = "192.168.1.107"
 UDP_PORT = 5005
 
-NUM_LEDS = 800
+NUM_LEDS = 600
 
 # =============================
 # DEVICE SELECTION
@@ -57,7 +57,7 @@ def audio_callback(indata, frames, time_info, status):
     energy = np.sqrt(np.mean(mono**2)) # RMS energy
 
     if energy > 0.01:
-        print("Lights ON")
+         print("Lights ON")
         led_buffer[:] = 255
 
     # Limit update rate to ~30 FPS to prevent network/LED flooding

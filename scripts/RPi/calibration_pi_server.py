@@ -1,19 +1,16 @@
 import socket
 import json
 import time
-from rpi_ws281x import PixelStrip, Color
-import threading
-import math
-from collections import deque
 import serial
-
+from rpi_ws281x import PixelStrip, Color
+from collections import deque
 
 # =============================
 # CONFIGURATION
 # =============================
 UDP_IP = "0.0.0.0"  # listen on all interfaces
 UDP_PORT = 5005
-DISPLAY_DELAY = 0.2  # Delay in seconds
+DISPLAY_DELAY = 0.0  # Delay in seconds
 
 # LED strip configuration
 LED_PIN_1 = 18        # PWM0
@@ -35,6 +32,14 @@ strip1.begin()
 strip2.begin()
 strip3.begin()
 
+# Initialize Serial for Pico communication
+try:
+    ser = serial.Serial('/dev/serial0', 9600, timeout=0)
+    uart_buffer = ""
+except Exception as e:
+    print(f"Warning: Could not open serial port: {e}")
+    ser = None
+
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sock.bind((UDP_IP, UDP_PORT))
 sock.setblocking(False)
@@ -43,57 +48,39 @@ print("Listening for LED frames on UDP port", UDP_PORT)
 
 frame_buffer = deque()
 
-
-# /dev/serial0 is the default alias for the primary UART pins
-ser = serial.Serial('/dev/serial0', 9600, timeout=0)
-ser.reset_input_buffer()
-serial_buffer = ""
-
-print("Connecting to Pico...")
-
-
 try:
     while True:
-        # Drain UDP buffer
+        # Check for UART data from Pico to adjust delay
+        if ser and ser.in_waiting > 0:
+            try:
+                data = ser.read(ser.in_waiting).decode('utf-8', errors='ignore')
+                uart_buffer += data
+                if '\n' in uart_buffer:
+                    lines = uart_buffer.split('\n')
+                    uart_buffer = lines[-1]
+                    for line in lines[:-1]:
+                        line = line.strip()
+                        if line.startswith("D:"):
+                            voltage = float(line.split(":")[1])
+                            # Map 0-3.3V to 0-1.0s delay
+                            DISPLAY_DELAY = (voltage / 3.3) * 1.0
+            except Exception as e:
+                print(f"Serial read error: {e}")
+
+        # Drain UDP buffer to get the latest frames
         while True:
             try:
                 data, addr = sock.recvfrom(65536)
-                frame_buffer.append((time.time(), data))
+                frame_buffer.append((time.time() + DISPLAY_DELAY, data))
             except BlockingIOError:
                 break
 
-        # Drain Serial buffer
-        if ser.in_waiting > 0:
-            try:
-                data = ser.read(ser.in_waiting).decode('utf-8', errors='ignore')
-                serial_buffer += data
-                if '\n' in serial_buffer:
-                    lines = serial_buffer.split('\n')
-                    # Process all complete lines
-                    for line in lines[:-1]:
-                        line = line.strip()
-                        # Only process lines starting with our protocol prefix "D:"
-                        if line.startswith("D:"):
-                            try:
-                                # Remove "D:" and parse the number
-                                new_delay = float(line[2:])
-                                if abs(new_delay - DISPLAY_DELAY) > 0.01:
-                                    DISPLAY_DELAY = new_delay
-                                    print(f"Delay updated to: {DISPLAY_DELAY:.3f}")
-                            except ValueError:
-                                pass
-                    # Keep the last chunk (incomplete line)
-                    serial_buffer = lines[-1]
-                    if len(serial_buffer) > 256: serial_buffer = ""
-            except Exception as e:
-                print(f"Serial error: {e}")
-
-        if not frame_buffer or time.time() < frame_buffer[0][0] + DISPLAY_DELAY:
+        if not frame_buffer or time.time() < frame_buffer[0][0]:
             time.sleep(0.001)
             continue
 
         # Skip frames if we are falling behind
-        while len(frame_buffer) > 1 and time.time() > frame_buffer[1][0] + DISPLAY_DELAY:
+        while len(frame_buffer) > 1 and time.time() > frame_buffer[1][0]:
             frame_buffer.popleft()
 
         _, data = frame_buffer.popleft()
@@ -121,10 +108,9 @@ try:
         strip1.show()
         strip2.show()
         strip3.show()
-        print("Frame displayed")
+       # print("Frame displayed")
 
 except KeyboardInterrupt:
-    ser.close()
     print("Exiting, turning off LEDs")
     for i in range(NUM_LEDS_PER_STRIP):
         strip1.setPixelColor(i, Color(0, 0, 0))

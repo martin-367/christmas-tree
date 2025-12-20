@@ -1,9 +1,6 @@
 import socket
-import json
 import time
 from rpi_ws281x import PixelStrip, Color
-import threading
-import math
 from collections import deque
 
 # =============================
@@ -11,7 +8,7 @@ from collections import deque
 # =============================
 UDP_IP = "0.0.0.0"  # listen on all interfaces
 UDP_PORT = 5005
-DISPLAY_DELAY = 0.2  # Delay in seconds
+DISPLAY_DELAY = 0.0  # Delay in seconds
 
 # LED strip configuration
 LED_PIN_1 = 18        # PWM0
@@ -43,15 +40,21 @@ frame_buffer = deque()
 
 try:
     while True:
-        try:
-            data, addr = sock.recvfrom(65536)
-            frame_buffer.append((time.time() + DISPLAY_DELAY, data))
-        except BlockingIOError:
-            pass
+        # Drain UDP buffer to get the latest frames
+        while True:
+            try:
+                data, addr = sock.recvfrom(65536)
+                frame_buffer.append((time.time() + DISPLAY_DELAY, data))
+            except BlockingIOError:
+                break
 
         if not frame_buffer or time.time() < frame_buffer[0][0]:
             time.sleep(0.001)
             continue
+
+        # Skip frames if we are falling behind
+        while len(frame_buffer) > 1 and time.time() > frame_buffer[1][0]:
+            frame_buffer.popleft()
 
         _, data = frame_buffer.popleft()
 
